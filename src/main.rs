@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand::RngExt;
 
 #[derive(Component)]
 struct Creature;
@@ -24,18 +25,28 @@ fn setup(
     let circle = meshes.add(Circle::new(20.0));
     let material = materials.add(Color::srgb(1.0, 0.0, 1.0));
 
-    commands.spawn((
-        Creature,
-        Velocity(Vec2::new(10.0, 6.0)),
-        Mesh2d(circle),
-        MeshMaterial2d(material),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
+    let mut rng = rand::rng();
+
+    for _ in 0..20 {
+        let x = rng.random_range(-400.0..400.0);
+        let y = rng.random_range(-250.0..250.0);
+
+        let vx = rng.random_range(-100.0..100.0);
+        let vy = rng.random_range(-100.0..100.0);
+
+        commands.spawn((
+            Creature,
+            Velocity(Vec2::new(vx, vy)),
+            Mesh2d(circle.clone()),
+            MeshMaterial2d(material.clone()),
+            Transform::from_xyz(x, y, 0.0),
+        ));
+    }
 }
 
 fn move_creature(
     mut creatures: Query<(&mut Transform, &Velocity), With<Creature>>,
-    time: Res<Time>
+    time: Res<Time>,
 ) {
     for (mut transform, velocity) in &mut creatures {
         transform.translation += velocity.0.extend(0.0) * time.delta_secs();
