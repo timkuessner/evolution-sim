@@ -4,6 +4,7 @@ use rand::RngExt;
 const WORLD_WIDTH: f32 = 800.0;
 const WORLD_HEIGHT: f32 = 500.0;
 const CREATURE_RADIUS: f32 = 10.0;
+const FOOD_RADIUS: f32 = 5.0;
 
 #[derive(Component)]
 struct Creature;
@@ -14,11 +15,26 @@ struct Velocity(Vec2);
 #[derive(Component)]
 struct Energy(f32);
 
+#[derive(Component)]
+struct Food {
+    eaten: bool,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, (move_creature, bounce_creatures, drain_energy, remove_dead_creatures).chain())
+        .add_systems(
+            Update,
+            (
+                move_creature,
+                bounce_creatures,
+                drain_energy,
+                eat_food,
+                remove_dead_creatures,
+            )
+                .chain(),
+        )
         .run();
 }
 
@@ -29,13 +45,13 @@ fn setup(
 ) {
     commands.spawn(Camera2d);
 
-    let circle = meshes.add(Circle::new(CREATURE_RADIUS));
-    let material = materials.add(Color::srgb(1.0, 0.0, 1.0));
-
     let mut rng = rand::rng();
 
     let max_x = WORLD_WIDTH / 2.0 - CREATURE_RADIUS;
     let max_y = WORLD_HEIGHT / 2.0 - CREATURE_RADIUS;
+
+    let creature_circle = meshes.add(Circle::new(CREATURE_RADIUS));
+    let creature_material = materials.add(Color::srgb(1.0, 0.0, 1.0));
 
     for _ in 0..20 {
         let x = rng.random_range(-max_x..max_x);
@@ -48,8 +64,23 @@ fn setup(
             Creature,
             Velocity(Vec2::new(vx, vy)),
             Energy(100.0),
-            Mesh2d(circle.clone()),
-            MeshMaterial2d(material.clone()),
+            Mesh2d(creature_circle.clone()),
+            MeshMaterial2d(creature_material.clone()),
+            Transform::from_xyz(x, y, 0.0),
+        ));
+    }
+
+    let food_mesh = meshes.add(Circle::new(FOOD_RADIUS));
+    let food_material = materials.add(Color::srgb(1.0, 0.7, 0.2));
+
+    for _ in 0..30 {
+        let x = rng.random_range(-max_x..max_x);
+        let y = rng.random_range(-max_y..max_y);
+
+        commands.spawn((
+            Food { eaten: false },
+            Mesh2d(food_mesh.clone()),
+            MeshMaterial2d(food_material.clone()),
             Transform::from_xyz(x, y, 0.0),
         ));
     }
@@ -89,18 +120,41 @@ fn bounce_creatures(mut creatures: Query<(&mut Transform, &mut Velocity), With<C
     }
 }
 
-fn drain_energy(
-    mut creatures: Query<&mut Energy, With<Creature>>, 
-    time: Res<Time>,
-) {
+fn drain_energy(mut creatures: Query<&mut Energy, With<Creature>>, time: Res<Time>) {
     for mut energy in &mut creatures {
         energy.0 -= 5.0 * time.delta_secs();
     }
 }
 
+fn eat_food(
+    mut commands: Commands,
+    mut creatures: Query<(&Transform, &mut Energy), With<Creature>>,
+    mut foods: Query<(Entity, &Transform, &mut Food)>,
+) {
+    for (creature_transform, mut energy) in &mut creatures {
+        for (food_entity, food_transform, mut food) in &mut foods {
+            if food.eaten {
+                continue;
+            }
+
+            let distance = creature_transform
+                .translation
+                .truncate()
+                .distance(food_transform.translation.truncate());
+
+            if distance < CREATURE_RADIUS + FOOD_RADIUS {
+                food.eaten = true;
+                energy.0 = (energy.0 + 30.0).min(100.0);
+                commands.entity(food_entity).despawn();
+                break;
+            }
+        }
+    }
+}
+
 fn remove_dead_creatures(
     mut commands: Commands,
-    mut creatures: Query<(Entity, &Energy), With<Creature>>,
+    creatures: Query<(Entity, &Energy), With<Creature>>,
 ) {
     for (entity, energy) in &creatures {
         if energy.0 <= 0.0 {
