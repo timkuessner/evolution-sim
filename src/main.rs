@@ -11,11 +11,14 @@ struct Creature;
 #[derive(Component)]
 struct Velocity(Vec2);
 
+#[derive(Component)]
+struct Energy(f32);
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, (move_creature, bounce_creatures).chain())
+        .add_systems(Update, (move_creature, bounce_creatures, drain_energy, remove_dead_creatures).chain())
         .run();
 }
 
@@ -44,6 +47,7 @@ fn setup(
         commands.spawn((
             Creature,
             Velocity(Vec2::new(vx, vy)),
+            Energy(100.0),
             Mesh2d(circle.clone()),
             MeshMaterial2d(material.clone()),
             Transform::from_xyz(x, y, 0.0),
@@ -81,6 +85,26 @@ fn bounce_creatures(mut creatures: Query<(&mut Transform, &mut Velocity), With<C
         } else if position.y > max_y {
             position.y = max_y;
             velocity.0.y = -velocity.0.y.abs();
+        }
+    }
+}
+
+fn drain_energy(
+    mut creatures: Query<&mut Energy, With<Creature>>, 
+    time: Res<Time>,
+) {
+    for mut energy in &mut creatures {
+        energy.0 -= 5.0 * time.delta_secs();
+    }
+}
+
+fn remove_dead_creatures(
+    mut commands: Commands,
+    mut creatures: Query<(Entity, &Energy), With<Creature>>,
+) {
+    for (entity, energy) in &creatures {
+        if energy.0 <= 0.0 {
+            commands.entity(entity).despawn();
         }
     }
 }
