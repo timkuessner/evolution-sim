@@ -20,6 +20,9 @@ struct Food {
     eaten: bool,
 }
 
+#[derive(Component)]
+struct FoodRespawnTimer(Timer);
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -31,6 +34,7 @@ fn main() {
                 bounce_creatures,
                 drain_energy,
                 eat_food,
+                respawn_food,
                 remove_dead_creatures,
             )
                 .chain(),
@@ -129,7 +133,7 @@ fn drain_energy(mut creatures: Query<&mut Energy, With<Creature>>, time: Res<Tim
 fn eat_food(
     mut commands: Commands,
     mut creatures: Query<(&Transform, &mut Energy), With<Creature>>,
-    mut foods: Query<(Entity, &Transform, &mut Food)>,
+    mut foods: Query<(Entity, &Transform, &mut Food), Without<FoodRespawnTimer>>,
 ) {
     for (creature_transform, mut energy) in &mut creatures {
         for (food_entity, food_transform, mut food) in &mut foods {
@@ -145,9 +149,45 @@ fn eat_food(
             if distance < CREATURE_RADIUS + FOOD_RADIUS {
                 food.eaten = true;
                 energy.0 = (energy.0 + 30.0).min(100.0);
-                commands.entity(food_entity).despawn();
+                commands.entity(food_entity).insert((
+                    FoodRespawnTimer(Timer::from_seconds(5.0, TimerMode::Once)),
+                    Visibility::Hidden,
+                ));
                 break;
             }
+        }
+    }
+}
+
+fn respawn_food(
+    mut commands: Commands,
+    mut foods: Query<(
+        Entity,
+        &mut Food,
+        &mut FoodRespawnTimer,
+        &mut Transform,
+        &mut Visibility,
+    )>,
+    time: Res<Time>,
+) {
+    let mut rng = rand::rng();
+
+    let max_x = WORLD_WIDTH / 2.0 - CREATURE_RADIUS;
+    let max_y = WORLD_HEIGHT / 2.0 - CREATURE_RADIUS;
+
+    for (entity, mut food, mut timer, mut transform, mut visibility) in &mut foods {
+        timer.0.tick(time.delta());
+
+        if timer.0.is_finished() {
+            transform.translation.x =
+                rng.random_range(-max_x..max_x);
+            transform.translation.y =
+                rng.random_range(-max_y..max_y);
+
+            food.eaten = false;
+            *visibility = Visibility::Visible;
+
+            commands.entity(entity).remove::<FoodRespawnTimer>();
         }
     }
 }
